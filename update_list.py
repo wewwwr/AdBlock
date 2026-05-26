@@ -10,10 +10,16 @@ urls = [
     "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/ultimate.txt"
 ]
 
-# Твои ручные правила
+# Твои ручные правила для БЛОКИРОВКИ
 combined_rules = {
     "DOMAIN-SUFFIX,kaspersky-labs.com",
     "DOMAIN-SUFFIX,gepush.com"
+}
+
+# 🟢 СПИСОК ИСКЛЮЧЕНИЙ: впиши сюда домены, которые НЕ НУЖНО блокировать
+exclusions = {
+    "keysforgamers.com",
+    "keysforgamers.com"
 }
 
 print("Начинаю загрузку и обработку списков...")
@@ -28,6 +34,13 @@ for url in urls:
                 
                 # Игнорируем пустые строки и комментарии
                 if not line or line.startswith('#') or line.startswith('//'):
+                    continue
+                
+                # Вытаскиваем "чистый" домен для проверки (убираем DOMAIN-SUFFIX, если он есть)
+                clean_domain = line.split(',')[-1] if ',' in line else line
+                
+                # Если сайт есть в списке исключений — пропускаем его и не добавляем в итоговый файл
+                if clean_domain in exclusions:
                     continue
                 
                 # Если это чистый домен (без запятой), превращаем его в правило DOMAIN-SUFFIX
