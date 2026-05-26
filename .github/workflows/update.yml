@@ -1,0 +1,34 @@
+name: Update Blocklist
+
+on:
+  schedule:
+    # Запуск каждую ночь в 2:00 UTC (около 5:00 утра по Москве/СПб)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Позволяет запустить процесс вручную кнопкой
+
+permissions:
+  contents: write
+
+jobs:
+  update-list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Python script
+        run: python update_list.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add my_custom_blocklist.list
+          # Если изменений нет, скрипт не упадет с ошибкой
+          git commit -m "Auto-update blocklist" || echo "No changes to commit"
+          git push
