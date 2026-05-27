@@ -13,7 +13,15 @@ urls = [
 # Твои ручные правила для БЛОКИРОВКИ
 combined_rules = {
     "DOMAIN-SUFFIX,kaspersky-labs.com",
-    "DOMAIN-SUFFIX,gepush.com"
+    "DOMAIN-SUFFIX,gepush.com",
+    "DOMAIN-SUFFIX,youtubei.googleapis.com",
+    "DOMAIN-SUFFIX,rudderstack.com",
+    "DOMAIN-SUFFIX,i.instagram.com",
+    "DOMAIN-SUFFIX,widgets.pinterest.com",
+    "DOMAIN-SUFFIX,qevents.quora.com",
+    "DOMAIN-SUFFIX,clientstream.launchdarkly.com",
+    "DOMAIN-SUFFIX,click.mailchimp.com"
+    
 }
 
 # 🟢 СПИСОК ИСКЛЮЧЕНИЙ: впиши сюда домены, которые НЕ НУЖНО блокировать
