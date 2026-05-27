@@ -19,7 +19,20 @@ combined_rules = {
     "DOMAIN-SUFFIX,widgets.pinterest.com",
     "DOMAIN-SUFFIX,qevents.quora.com",
     "DOMAIN-SUFFIX,clientstream.launchdarkly.com",
-    "DOMAIN-SUFFIX,click.mailchimp.com"
+    "DOMAIN-SUFFIX,click.mailchimp.com",
+    "DOMAIN-SUFFIX,cpu.js.org",
+    "DOMAIN-SUFFIX,fastpool.xyz",
+    "DOMAIN-SUFFIX,pendo.io",
+    "DOMAIN-SUFFIX,cookies-data.onetrust.io",
+    "DOMAIN-SUFFIX,mailchimp.com",
+    "DOMAIN-SUFFIX,open.convertkit.com",
+    "DOMAIN-SUFFIX,app.convertkit.com",
+    "DOMAIN-SUFFIX,email.mailgun.net",
+    "DOMAIN-SUFFIX,clicks.aweber.com",
+    "DOMAIN-SUFFIX,pi.pardot.com",
+    "DOMAIN-SUFFIX,mandrillapp.com",
+    "DOMAIN-SUFFIX,sendgrid.net"
+
     
 }
 
