@@ -14,7 +14,6 @@ urls = [
 combined_rules = {
     "DOMAIN-SUFFIX,kaspersky-labs.com",
     "DOMAIN-SUFFIX,gepush.com",
-    "DOMAIN,youtubei.googleapis.com",
     "DOMAIN-SUFFIX,rudderstack.com",
     "DOMAIN-SUFFIX,i.instagram.com",
     "DOMAIN-SUFFIX,widgets.pinterest.com",
