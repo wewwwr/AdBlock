@@ -106,7 +106,8 @@ EXCLUSIONS = {
 #  НАСТРОЙКИ
 # ─────────────────────────────────────────────
 
-OUTPUT_FILENAME = "output/my_custom_blocklist.list"
+OUTPUT_FILENAME = "my_custom_blocklist.list"
+
 USER_AGENT = "Mozilla/5.0 (compatible; ShadowrocketBlocklistBuilder/1.0)"
 
 DOMAIN_RULE_PREFIXES = {
