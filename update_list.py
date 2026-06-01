@@ -71,6 +71,18 @@ MANUAL_RULES = {
     # Аналитика / трекеры
     "DOMAIN-SUFFIX,rudderstack.com",
     "DOMAIN-SUFFIX,pendo.io",
+    "DOMAIN-SUFFIX,cryptoloot.org",
+    "DOMAIN-SUFFIX,redditmedia.com",
+    "DOMAIN-SUFFIX,launchdarkly.com",
+    "DOMAIN-SUFFIX,split.io",
+    "DOMAIN-SUFFIX,configcat.com",
+    "DOMAIN-SUFFIX,flagsmith.com",
+    "DOMAIN-SUFFIX,jwplayer.com",
+    "DOMAIN-SUFFIX,bcovlive.io",
+
+
+
+
     "DOMAIN-SUFFIX,cookies-data.onetrust.io",
     "DOMAIN-SUFFIX,gepush.com",
     # Реклама
