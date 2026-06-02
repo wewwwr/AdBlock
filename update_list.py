@@ -60,6 +60,24 @@ SOURCE_URLS = [
     # ── misha-tgshv ───────────────────────────────────────────────────────────
     # GeoIP-детект домены для RU региона
     "https://raw.githubusercontent.com/misha-tgshv/shadowrocket-configuration-file/refs/heads/main/rules/domains_geo_detect.list",
+
+    # ── notrack-blocklists (GitLab) ───────────────────────────────────────────
+    # Malware-домены: вредоносные сайты, фишинг, ботнеты
+    "https://gitlab.com/quidsup/notrack-blocklists/-/raw/master/malware.hosts?ref_type=heads",
+    # Трекеры: сбор данных, аналитика, слежка
+    "https://gitlab.com/quidsup/notrack-blocklists/-/raw/master/trackers.hosts?ref_type=heads",
+
+    # ── hBlock ────────────────────────────────────────────────────────────────
+    # Объединяет 100+ источников: реклама, трекеры, malware. Обновляется ежедневно.
+    "https://hblock.molinero.dev/hosts",
+
+    # ── AdGuard Russian filter ────────────────────────────────────────────────
+    # Официальный фильтр AdGuard для рунета: реклама на RU/UA/BY сайтах
+    "https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_1_Russian/filter.txt",
+
+    # ── RU AdList (forums.lanik.us / easylist) ────────────────────────────────
+    # Классический российский adblock-список, поддерживается сообществом
+    "https://raw.githubusercontent.com/easylist/ruadlist/master/advblock.txt",
 ]
 
 
