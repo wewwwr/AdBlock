@@ -71,9 +71,7 @@ SOURCE_URLS = [
     # Объединяет 100+ источников: реклама, трекеры, malware. Обновляется ежедневно.
     "https://hblock.molinero.dev/hosts",
 
-    # ── AdGuard Russian filter ────────────────────────────────────────────────
-    # Официальный фильтр AdGuard для рунета: реклама на RU/UA/BY сайтах
-    "https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_1_Russian/filter.txt",
+   
 
     
 ]
