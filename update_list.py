@@ -75,9 +75,7 @@ SOURCE_URLS = [
     # Официальный фильтр AdGuard для рунета: реклама на RU/UA/BY сайтах
     "https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_1_Russian/filter.txt",
 
-    # ── RU AdList (forums.lanik.us / easylist) ────────────────────────────────
-    # Классический российский adblock-список, поддерживается сообществом
-    "https://raw.githubusercontent.com/easylist/ruadlist/master/advblock.txt",
+    
 ]
 
 
