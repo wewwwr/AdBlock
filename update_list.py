@@ -93,6 +93,9 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,flagsmith.com",
     "DOMAIN-SUFFIX,jwplayer.com",
     "DOMAIN-SUFFIX,bcovlive.io",
+    "DOMAIN-SUFFIX,ngfts.lge.com",
+    "DOMAIN-SUFFIX,cdn.privacy-mgmt.com",
+    "DOMAIN-SUFFIX,s.youtube.com",
 
 
 
