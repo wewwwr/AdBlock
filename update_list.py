@@ -96,6 +96,9 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,ngfts.lge.com",
     "DOMAIN-SUFFIX,cdn.privacy-mgmt.com",
     "DOMAIN-SUFFIX,s.youtube.com",
+    "DOMAIN-SUFFIX,f.vimeocdn.com",
+    "DOMAIN-SUFFIX,st-widget.s3.amazonaws.com",
+    "DOMAIN-SUFFIX,f.vimeocdn.com",
 
 
 
