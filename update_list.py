@@ -100,6 +100,9 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,f.vimeocdn.com",
     "DOMAIN-SUFFIX,st-widget.s3.amazonaws.com",
     "DOMAIN-SUFFIX,f.vimeocdn.com",
+    "DOMAIN-SUFFIX,cdn.ravenjs.com",
+    "DOMAIN-SUFFIX,tagmanager.google.com",
+    "DOMAIN-SUFFIX,plus.google.com",
 
 
 
