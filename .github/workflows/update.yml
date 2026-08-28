@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 
-# Эта настройка принудительно включает Node.js 24 и убирает предупреждение
+# Принудительно включает Node.js 24
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -31,11 +31,38 @@ jobs:
       - name: Check All Parsers
         run: python check_parser.py
 
+      # Проверяем, что отчёт и список нераспарсенных
+      # действительно созданы перед commit.
+      - name: Verify Reports
+        run: |
+          echo "📁 Contents of reports/:"
+          ls -lah reports/
+
+          echo ""
+          echo "📄 Checking parser report..."
+          test -f reports/parser_report.md
+
+          echo "📄 Checking unparsed lines..."
+          test -f reports/unparsed_lines.txt
+
+          echo ""
+          echo "📊 Unparsed lines:"
+          wc -l reports/unparsed_lines.txt
+
       - name: Commit and Push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Добавляем весь reports/, чтобы новые отчёты
+          # в будущем тоже автоматически попадали в Git.
           git add my_custom_blocklist.list
-          git add reports/parser_report.md
-          git commit -m "Auto-update blocklist and parser report" || echo "No changes to commit"
+          git add reports/
+
+          echo ""
+          echo "📋 Changes to commit:"
+          git status --short
+
+          git commit -m "Auto-update blocklist and parser reports" || echo "No changes to commit"
+
           git push
