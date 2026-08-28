@@ -7,14 +7,17 @@ from pathlib import Path
 
 
 # ─────────────────────────────────────────────
-# НАСТРОЙКА
+# НАСТРОЙКИ
 # ─────────────────────────────────────────────
 
-# Укажи здесь ИМЯ основного Python-файла.
-# Например: main.py
-MAIN_SCRIPT = "main.py"
+# Твой основной скрипт
+MAIN_SCRIPT = "update_list.py"
 
-REPORT_FILENAME = "parser_report.md"
+# Отчёт будет автоматически создан в этой папке
+REPORT_FILENAME = "reports/parser_report.md"
+
+# Итоговый файл основной базы
+OUTPUT_FILENAME = "my_custom_blocklist.list"
 
 
 # ─────────────────────────────────────────────
@@ -40,81 +43,15 @@ def load_main_module():
         )
 
     module = importlib.util.module_from_spec(spec)
+
     sys.modules["main_blocklist"] = module
+
     spec.loader.exec_module(module)
 
     return module
 
 
 main = load_main_module()
-
-
-# ─────────────────────────────────────────────
-# ПРОВЕРКА ОДНОГО ИСТОЧНИКА
-# ─────────────────────────────────────────────
-
-def check_source(url: str) -> dict:
-    result = {
-        "url": url,
-        "name": source_name(url),
-        "downloaded": False,
-        "total_lines": 0,
-        "empty_lines": 0,
-        "comments": 0,
-        "parsed": 0,
-        "failed": 0,
-        "excluded": 0,
-        "duplicates": 0,
-        "unique": 0,
-        "error": "",
-    }
-
-    try:
-        content = main.fetch_text(url)
-
-        result["downloaded"] = True
-
-        seen = set()
-
-        for raw_line in content.splitlines():
-            result["total_lines"] += 1
-
-            line = main.strip_inline_noise(raw_line)
-
-            if not line:
-                result["empty_lines"] += 1
-                continue
-
-            if line.startswith(("#", "//", "!", ";")):
-                result["comments"] += 1
-                continue
-
-            normalized = main.normalize_rule(line)
-
-            if normalized is None:
-                result["failed"] += 1
-
-                # Проверяем, не был ли он отброшен
-                # именно из-за EXCLUSIONS.
-                if is_excluded_line(line):
-                    result["failed"] -= 1
-                    result["excluded"] += 1
-
-                continue
-
-            result["parsed"] += 1
-
-            if normalized in seen:
-                result["duplicates"] += 1
-            else:
-                seen.add(normalized)
-
-        result["unique"] = len(seen)
-
-    except Exception as e:
-        result["error"] = f"{type(e).__name__}: {e}"
-
-    return result
 
 
 # ─────────────────────────────────────────────
@@ -125,6 +62,7 @@ def source_name(url: str) -> str:
     u = url.lower()
 
     if "blackmatrix7" in u:
+
         if "advertising_domain" in u:
             return "blackmatrix7 — Advertising Domain"
 
@@ -143,7 +81,7 @@ def source_name(url: str) -> str:
     if "anti-ad" in u:
         return "anti-AD"
 
-    if "awavenue" in u.lower():
+    if "awavenue" in u:
         return "AWAvenue Ads"
 
     if "loyalsoldier" in u:
@@ -183,7 +121,12 @@ def source_name(url: str) -> str:
 def is_excluded_line(line: str) -> bool:
     line = main.strip_inline_noise(line)
 
+    if not line:
+        return False
+
+    # Shadowrocket / Surge
     if "," in line:
+
         prefix, value = line.split(",", 1)
 
         prefix = prefix.strip().upper()
@@ -194,113 +137,361 @@ def is_excluded_line(line: str) -> bool:
             "DOMAIN-SUFFIX",
             "DOMAIN-KEYWORD",
         }:
-            return main.is_excluded_rule(prefix, value)
+            return main.is_excluded_rule(
+                prefix,
+                value,
+            )
 
+    # HOSTS
     parts = line.split()
 
-    if len(parts) >= 2 and main.is_ip_address(parts[0]):
+    if (
+        len(parts) >= 2
+        and main.is_ip_address(parts[0])
+    ):
         host = main.extract_domain_token(parts[1])
 
         return bool(
-            host and main.is_excluded_domain(host)
+            host
+            and main.is_excluded_domain(host)
         )
 
+    # Обычный домен
     domain = main.extract_domain_token(line)
 
     return bool(
-        domain and main.is_excluded_domain(domain)
+        domain
+        and main.is_excluded_domain(domain)
     )
 
 
 # ─────────────────────────────────────────────
-# MARKDOWN
+# ПРОВЕРКА ОДНОГО ИСТОЧНИКА
 # ─────────────────────────────────────────────
 
-def make_report(results: list[dict]) -> str:
-    now = datetime.now(timezone.utc).strftime(
+def check_source(
+    url: str,
+    cumulative_rules: set[str],
+) -> dict:
+
+    result = {
+        "url": url,
+        "name": source_name(url),
+
+        "downloaded": False,
+
+        "total_lines": 0,
+        "empty_lines": 0,
+        "comments": 0,
+
+        "parsed": 0,
+        "failed": 0,
+        "excluded": 0,
+
+        "duplicates": 0,
+        "unique": 0,
+
+        # Сколько правил этой базы реально
+        # добавилось к общему результату.
+        "new_to_total": 0,
+
+        "error": "",
+    }
+
+    try:
+
+        content = main.fetch_text(url)
+
+        result["downloaded"] = True
+
+        source_rules: set[str] = set()
+
+        for raw_line in content.splitlines():
+
+            result["total_lines"] += 1
+
+            line = main.strip_inline_noise(
+                raw_line
+            )
+
+            if not line:
+                result["empty_lines"] += 1
+                continue
+
+            if line.startswith(
+                ("#", "//", "!", ";")
+            ):
+                result["comments"] += 1
+                continue
+
+            normalized = main.normalize_rule(
+                line
+            )
+
+            if normalized is None:
+
+                # Сначала выясняем,
+                # не была ли строка исключена
+                # специально через EXCLUSIONS.
+                if is_excluded_line(line):
+                    result["excluded"] += 1
+                else:
+                    result["failed"] += 1
+
+                continue
+
+            result["parsed"] += 1
+
+            # Дубли внутри самой базы.
+            if normalized in source_rules:
+                result["duplicates"] += 1
+
+            source_rules.add(normalized)
+
+        result["unique"] = len(source_rules)
+
+        # Сколько правил этой базы ещё не было
+        # среди предыдущих источников.
+        before = len(cumulative_rules)
+
+        cumulative_rules.update(
+            source_rules
+        )
+
+        after = len(cumulative_rules)
+
+        result["new_to_total"] = (
+            after - before
+        )
+
+    except Exception as e:
+
+        result["error"] = (
+            f"{type(e).__name__}: {e}"
+        )
+
+    return result
+
+
+# ─────────────────────────────────────────────
+# ЧТЕНИЕ ИТОГОВОГО ФАЙЛА
+# ─────────────────────────────────────────────
+
+def read_final_blocklist() -> set[str]:
+    path = Path(OUTPUT_FILENAME)
+
+    if not path.exists():
+        return set()
+
+    rules = set()
+
+    try:
+        for raw_line in path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        ).splitlines():
+
+            line = raw_line.strip()
+
+            if not line:
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            rules.add(line)
+
+    except Exception:
+        return set()
+
+    return rules
+
+
+# ─────────────────────────────────────────────
+# MARKDOWN REPORT
+# ─────────────────────────────────────────────
+
+def make_report(
+    results: list[dict],
+    cumulative_rules: set[str],
+    manual_rules: set[str],
+) -> str:
+
+    now = datetime.now(
+        timezone.utc
+    ).strftime(
         "%Y-%m-%d %H:%M UTC"
     )
 
-    total_lines = sum(r["total_lines"] for r in results)
-    total_parsed = sum(r["parsed"] for r in results)
-    total_failed = sum(r["failed"] for r in results)
-    total_excluded = sum(r["excluded"] for r in results)
-    total_duplicates = sum(r["duplicates"] for r in results)
-
     successful = sum(
-        1 for r in results if r["downloaded"]
+        1
+        for r in results
+        if r["downloaded"]
     )
 
-    failed_sources = len(results) - successful
+    failed_sources = (
+        len(results) - successful
+    )
 
-    # Глобальные уникальные правила
-    global_rules = set()
+    total_lines = sum(
+        r["total_lines"]
+        for r in results
+    )
 
-    for url in main.SOURCE_URLS:
-        try:
-            content = main.fetch_text(url)
+    total_parsed = sum(
+        r["parsed"]
+        for r in results
+    )
 
-            for raw_line in content.splitlines():
-                normalized = main.normalize_rule(raw_line)
+    total_failed = sum(
+        r["failed"]
+        for r in results
+    )
 
-                if normalized:
-                    global_rules.add(normalized)
+    total_excluded = sum(
+        r["excluded"]
+        for r in results
+    )
 
-        except Exception:
-            pass
+    total_duplicates = sum(
+        r["duplicates"]
+        for r in results
+    )
+
+    total_unique_per_source = sum(
+        r["unique"]
+        for r in results
+    )
+
+    total_new_to_total = sum(
+        r["new_to_total"]
+        for r in results
+    )
+
+    final_file_rules = (
+        read_final_blocklist()
+    )
+
+    # ─────────────────────────────────────
+    # REPORT
+    # ─────────────────────────────────────
 
     lines = []
 
-    lines.append("# Parser Report")
+    lines.append(
+        "# 🔍 Parser Report"
+    )
+
     lines.append("")
+
     lines.append(
         f"Последняя проверка: **{now}**"
     )
+
     lines.append("")
 
-    lines.append("## Общий итог")
+    # ─────────────────────────────────────
+    # ОБЩИЙ ИТОГ
+    # ─────────────────────────────────────
+
+    lines.append(
+        "## 📊 Общий итог"
+    )
+
     lines.append("")
+
     lines.append(
         f"- Источников: **{successful}/{len(results)}** успешно"
     )
+
     lines.append(
         f"- Ошибок загрузки: **{failed_sources}**"
     )
-    lines.append(
-        f"- Всего строк: **{total_lines:,}**"
-    )
-    lines.append(
-        f"- Успешно распарсено: **{total_parsed:,}**"
-    )
-    lines.append(
-        f"- Отброшено при парсинге: **{total_failed:,}**"
-    )
-    lines.append(
-        f"- Исключено через EXCLUSIONS: **{total_excluded:,}**"
-    )
-    lines.append(
-        f"- Дубликатов: **{total_duplicates:,}**"
-    )
-    lines.append(
-        f"- Глобально уникальных правил: **{len(global_rules):,}**"
-    )
-    lines.append("")
-
-    lines.append("## Источники")
-    lines.append("")
 
     lines.append(
-        "| Источник | Строк | Распарсено | Отброшено | EXCLUSIONS | Дубли | Уникальных | Статус |"
+        f"- Всего строк во всех источниках: **{total_lines:,}**"
     )
+
     lines.append(
-        "|---|---:|---:|---:|---:|---:|---:|---|"
+        f"- Успешно распарсено строк: **{total_parsed:,}**"
+    )
+
+    lines.append(
+        f"- Не удалось распарсить: **{total_failed:,}**"
+    )
+
+    lines.append(
+        f"- Удалено через EXCLUSIONS: **{total_excluded:,}**"
+    )
+
+    lines.append(
+        f"- Дубликатов внутри источников: **{total_duplicates:,}**"
+    )
+
+    lines.append(
+        f"- Сумма уникальных правил по источникам: **{total_unique_per_source:,}**"
+    )
+
+    lines.append(
+        f"- Новых правил, добавленных источниками: **{total_new_to_total:,}**"
+    )
+
+    lines.append(
+        f"- Ручных правил: **{len(manual_rules):,}**"
+    )
+
+    lines.append(
+        f"- Уникальных правил после объединения источников: **{len(cumulative_rules):,}**"
+    )
+
+    if final_file_rules:
+
+        lines.append(
+            f"- Правил фактически в `{OUTPUT_FILENAME}`: **{len(final_file_rules):,}**"
+        )
+
+        difference = (
+            len(final_file_rules)
+            - len(cumulative_rules)
+        )
+
+        if difference == 0:
+            lines.append(
+                "- Проверка итогового файла: **✅ совпадает**"
+            )
+        else:
+            lines.append(
+                f"- Проверка итогового файла: **⚠️ разница {difference:+,}**"
+            )
+
+    lines.append("")
+
+    # ─────────────────────────────────────
+    # ТАБЛИЦА ИСТОЧНИКОВ
+    # ─────────────────────────────────────
+
+    lines.append(
+        "## 📚 Источники"
+    )
+
+    lines.append("")
+
+    lines.append(
+        "| Источник | Строк | Распарсено | Отброшено | EXCLUSIONS | Дубли | Уникальных | Новых в итог | Статус |"
+    )
+
+    lines.append(
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|"
     )
 
     for r in results:
+
         if r["downloaded"]:
             status = "✅ OK"
         else:
-            status = f"❌ {r['error']}"
+            status = (
+                f"❌ {r['error']}"
+            )
 
         lines.append(
             f"| {r['name']} "
@@ -310,38 +501,106 @@ def make_report(results: list[dict]) -> str:
             f"| {r['excluded']:,} "
             f"| {r['duplicates']:,} "
             f"| {r['unique']:,} "
+            f"| {r['new_to_total']:,} "
             f"| {status} |"
         )
 
     lines.append("")
 
-    lines.append("## Что означают столбцы")
-    lines.append("")
+    # ─────────────────────────────────────
+    # ПОЯСНЕНИЕ
+    # ─────────────────────────────────────
+
     lines.append(
-        "- **Строк** — сколько строк получено из источника."
+        "## ℹ️ Что означают столбцы"
     )
-    lines.append(
-        "- **Распарсено** — сколько строк превратилось в валидные правила."
-    )
-    lines.append(
-        "- **Отброшено** — строки, которые парсер не смог преобразовать."
-    )
-    lines.append(
-        "- **EXCLUSIONS** — правила, удалённые твоими исключениями."
-    )
-    lines.append(
-        "- **Дубли** — повторяющиеся правила внутри конкретного источника."
-    )
-    lines.append(
-        "- **Уникальных** — уникальные правила после дедупликации внутри источника."
-    )
+
     lines.append("")
 
     lines.append(
-        "> ⚠️ Дубликаты между разными источниками не считаются в колонке «Дубли»."
+        "- **Строк** — сколько строк получено от источника."
     )
+
     lines.append(
-        "> Глобальный итог учитывает дедупликацию всех источников вместе."
+        "- **Распарсено** — сколько строк превратилось в валидные Shadowrocket/Surge-правила."
+    )
+
+    lines.append(
+        "- **Отброшено** — строки, которые текущий парсер не смог преобразовать."
+    )
+
+    lines.append(
+        "- **EXCLUSIONS** — строки, которые намеренно удалены твоими исключениями."
+    )
+
+    lines.append(
+        "- **Дубли** — повторяющиеся правила внутри одной конкретной базы."
+    )
+
+    lines.append(
+        "- **Уникальных** — уникальные правила внутри конкретной базы."
+    )
+
+    lines.append(
+        "- **Новых в итог** — сколько уникальных правил эта база добавила сверх всех предыдущих баз."
+    )
+
+    lines.append("")
+
+    lines.append(
+        "> 💡 Именно столбец **«Новых в итог»** показывает реальную пользу каждой базы."
+    )
+
+    lines.append(
+        "> Если база содержит 1 000 000 правил, но «Новых в итог» = 50 000, остальные уже были получены из других источников."
+    )
+
+    lines.append("")
+
+    lines.append(
+        "## 🛡️ Проверяемая логика"
+    )
+
+    lines.append("")
+
+    lines.append(
+        "- `update_list.py` — основной парсер."
+    )
+
+    lines.append(
+        "- `DOMAIN-KEYWORD` разрешён без точки."
+    )
+
+    lines.append(
+        "- Дубли удаляются через `set`."
+    )
+
+    lines.append(
+        "- `EXCLUSIONS` учитываются."
+    )
+
+    lines.append(
+        "- Итоговый файл проверяется отдельно."
+    )
+
+    lines.append("")
+
+    lines.append(
+        "## 📁 Файлы"
+    )
+
+    lines.append("")
+
+    lines.append(
+        f"- Основная база: `{OUTPUT_FILENAME}`"
+    )
+
+    lines.append(
+        f"- Основной скрипт: `{MAIN_SCRIPT}`"
+    )
+
+    lines.append(
+        f"- Этот отчёт: `{REPORT_FILENAME}`"
     )
 
     return "\n".join(lines) + "\n"
@@ -352,42 +611,123 @@ def make_report(results: list[dict]) -> str:
 # ─────────────────────────────────────────────
 
 def main_check() -> None:
-    print("Запуск проверки парсера...\n")
+
+    print(
+        "🔍 Запуск проверки всех источников...\n"
+    )
 
     results = []
 
-    for index, url in enumerate(main.SOURCE_URLS, 1):
+    # Сюда постепенно складываются правила
+    # всех источников.
+    cumulative_rules: set[str] = set()
+
+    # Сначала учитываем ручные правила.
+    manual_rules: set[str] = set()
+
+    for rule in main.MANUAL_RULES:
+
+        normalized = main.normalize_rule(
+            rule
+        )
+
+        if normalized:
+            manual_rules.add(normalized)
+
+    cumulative_rules.update(
+        manual_rules
+    )
+
+    print(
+        f"Ручных правил: {len(manual_rules):,}"
+    )
+
+    print("")
+
+    # ─────────────────────────────────────
+    # ИСТОЧНИКИ
+    # ─────────────────────────────────────
+
+    for index, url in enumerate(
+        main.SOURCE_URLS,
+        1,
+    ):
+
         print(
             f"[{index}/{len(main.SOURCE_URLS)}] "
             f"{source_name(url)}"
         )
 
-        result = check_source(url)
+        result = check_source(
+            url,
+            cumulative_rules,
+        )
+
         results.append(result)
 
         if result["downloaded"]:
+
             print(
-                f"  ✅ строк: {result['total_lines']:,} | "
-                f"parsed: {result['parsed']:,} | "
-                f"failed: {result['failed']:,} | "
-                f"duplicates: {result['duplicates']:,}"
+                f"  ✅ строк: "
+                f"{result['total_lines']:,} | "
+                f"parsed: "
+                f"{result['parsed']:,} | "
+                f"failed: "
+                f"{result['failed']:,} | "
+                f"duplicates: "
+                f"{result['duplicates']:,} | "
+                f"new: "
+                f"{result['new_to_total']:,}"
             )
+
         else:
+
             print(
                 f"  ❌ {result['error']}"
             )
 
-    report = make_report(results)
+    # ─────────────────────────────────────
+    # СОЗДАНИЕ ОТЧЁТА
+    # ─────────────────────────────────────
 
-    Path(REPORT_FILENAME).write_text(
+    report = make_report(
+        results,
+        cumulative_rules,
+        manual_rules,
+    )
+
+    report_path = Path(
+        REPORT_FILENAME
+    )
+
+    report_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    report_path.write_text(
         report,
         encoding="utf-8",
     )
 
     print("")
-    print("════════════════════════════════════════")
-    print(f"✅ Отчёт создан: {REPORT_FILENAME}")
-    print("════════════════════════════════════════")
+
+    print(
+        "════════════════════════════════════════"
+    )
+
+    print(
+        f"✅ Отчёт создан: {REPORT_FILENAME}"
+    )
+
+    print(
+        f"📊 Уникальных правил: "
+        f"{len(cumulative_rules):,}"
+    )
+
+    print(
+        "════════════════════════════════════════"
+    )
 
 
 if __name__ == "__main__":
