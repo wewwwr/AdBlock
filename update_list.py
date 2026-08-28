@@ -71,10 +71,6 @@ SOURCE_URLS = [
     # ── hBlock ────────────────────────────────────────────────────────────────
     # Объединяет 100+ источников: реклама, трекеры, malware. Обновляется ежедневно.
     "https://hblock.molinero.dev/hosts",
-
-   
-
-    
 ]
 
 
@@ -96,7 +92,7 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,bcovlive.io",
     "DOMAIN-SUFFIX,ngfts.lge.com",
     "DOMAIN-SUFFIX,cdn.privacy-mgmt.com",
-    
+
     "DOMAIN-SUFFIX,f.vimeocdn.com",
     "DOMAIN-SUFFIX,st-widget.s3.amazonaws.com",
     "DOMAIN-SUFFIX,f.vimeocdn.com",
@@ -104,15 +100,14 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,tagmanager.google.com",
     "DOMAIN-SUFFIX,plus.google.com",
 
-
-
-
     "DOMAIN-SUFFIX,cookies-data.onetrust.io",
     "DOMAIN-SUFFIX,gepush.com",
+
     # Реклама
     "DOMAIN-SUFFIX,kaspersky-labs.com",
     "DOMAIN-SUFFIX,widgets.pinterest.com",
     "DOMAIN-SUFFIX,qevents.quora.com",
+
     # Email-маркетинг / спам
     "DOMAIN-SUFFIX,click.mailchimp.com",
     "DOMAIN-SUFFIX,mailchimp.com",
@@ -123,6 +118,7 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,pi.pardot.com",
     "DOMAIN-SUFFIX,mandrillapp.com",
     "DOMAIN-SUFFIX,sendgrid.net",
+
     # Майнинг
     "DOMAIN-SUFFIX,cpu.js.org",
     "DOMAIN-SUFFIX,fastpool.xyz",
@@ -182,11 +178,115 @@ def normalize_domain(value: str) -> str:
 
 
 def is_excluded_domain(domain: str) -> bool:
+    """
+    Проверяет, должен ли домен быть исключён из blocklist.
+
+    Важно:
+    Исключение работает в обе стороны.
+
+    Например:
+
+        EXCLUSIONS:
+            updates.maxmind.com
+
+        Правило:
+            DOMAIN-SUFFIX,maxmind.com
+
+    Такое правило тоже удаляется, потому что
+    DOMAIN-SUFFIX,maxmind.com блокирует updates.maxmind.com.
+
+    При этом обычное поведение для поддоменов сохраняется:
+        EXCLUSION = example.com
+        RULE      = foo.example.com
+        => правило удаляется.
+    """
+
     domain = normalize_domain(domain)
+
+    if not domain:
+        return False
+
     for exclusion in EXCLUSIONS:
         exclusion = normalize_domain(exclusion)
-        if domain == exclusion or domain.endswith("." + exclusion):
+
+        if not exclusion:
+            continue
+
+        # 1. Сам домен является исключением
+        if domain == exclusion:
             return True
+
+        # 2. Домен является поддоменом исключения
+        #
+        # EXCLUSION:
+        #   example.com
+        #
+        # DOMAIN:
+        #   cdn.example.com
+        #
+        # => исключить
+        if domain.endswith("." + exclusion):
+            return True
+
+        # 3. Правило является родительским доменом
+        #
+        # EXCLUSION:
+        #   updates.maxmind.com
+        #
+        # RULE:
+        #   maxmind.com
+        #
+        # DOMAIN-SUFFIX,maxmind.com
+        # всё равно заблокирует updates.maxmind.com.
+        #
+        # Поэтому такое правило тоже исключаем.
+        if exclusion.endswith("." + domain):
+            return True
+
+    return False
+
+
+def is_excluded_rule(prefix: str, value: str) -> bool:
+    """
+    Проверяет исключения именно с учётом типа Shadowrocket/Surge rule.
+
+    Меняет поведение только для доменных правил.
+    IP-CIDR, GEOIP, PROCESS-NAME, USER-AGENT, URL-REGEX
+    остаются без изменений.
+    """
+
+    prefix = prefix.strip().upper()
+
+    if prefix == "DOMAIN":
+        domain = extract_domain_token(value)
+        return bool(domain and is_excluded_domain(domain))
+
+    if prefix == "DOMAIN-SUFFIX":
+        domain = extract_domain_token(value)
+        return bool(domain and is_excluded_domain(domain))
+
+    if prefix == "DOMAIN-KEYWORD":
+        domain = extract_domain_token(value)
+
+        if not domain:
+            return False
+
+        domain = normalize_domain(domain)
+
+        # DOMAIN-KEYWORD,maxmind
+        # совпадёт с updates.maxmind.com.
+        #
+        # Поэтому проверяем, встречается ли keyword
+        # внутри любого исключённого домена.
+        for exclusion in EXCLUSIONS:
+            exclusion = normalize_domain(exclusion)
+
+            if domain in exclusion:
+                return True
+
+        # Также сохраняем обычную проверку.
+        return is_excluded_domain(domain)
+
     return False
 
 
@@ -207,6 +307,7 @@ def extract_domain_token(text: str) -> str:
 
     if text.startswith("||"):
         text = text[2:]
+
     if text.startswith("|"):
         text = text.lstrip("|")
 
@@ -222,6 +323,7 @@ def extract_domain_token(text: str) -> str:
 
     if ":" in text and not text.startswith("["):
         maybe_host, maybe_port = text.rsplit(":", 1)
+
         if maybe_port.isdigit():
             text = maybe_host
 
@@ -238,6 +340,7 @@ def extract_domain_token(text: str) -> str:
 
 def normalize_rule(line: str) -> Optional[str]:
     line = strip_inline_noise(line)
+
     if not line:
         return None
 
@@ -246,10 +349,13 @@ def normalize_rule(line: str) -> Optional[str]:
 
     # HOSTS-формат: 0.0.0.0 example.com
     parts = line.split()
+
     if len(parts) >= 2 and is_ip_address(parts[0]):
         host = extract_domain_token(parts[1])
+
         if host and not is_excluded_domain(host):
             return f"DOMAIN-SUFFIX,{host}"
+
         return None
 
     # Shadowrocket/Surge формат с префиксом
@@ -259,21 +365,40 @@ def normalize_rule(line: str) -> Optional[str]:
         value = value.strip()
 
         if prefix in {"DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"}:
-            domain = extract_domain_token(value)
-            if not domain or is_excluded_domain(domain):
+            # ИЗМЕНЕНО:
+            # Теперь проверяется не только само значение правила,
+            # но и случай, когда более широкое DOMAIN-SUFFIX
+            # накрывает исключённый домен.
+            if is_excluded_rule(prefix, value):
                 return None
+
+            domain = extract_domain_token(value)
+
+            if not domain:
+                return None
+
             return f"{prefix},{domain}"
 
-        if prefix in {"IP-CIDR", "IP-CIDR6", "GEOIP", "PROCESS-NAME", "USER-AGENT", "URL-REGEX"}:
+        if prefix in {
+            "IP-CIDR",
+            "IP-CIDR6",
+            "GEOIP",
+            "PROCESS-NAME",
+            "USER-AGENT",
+            "URL-REGEX",
+        }:
             return f"{prefix},{value}"
 
         domain = extract_domain_token(value)
+
         if domain and not is_excluded_domain(domain):
             return f"DOMAIN-SUFFIX,{domain}"
+
         return None
 
     # Adblock / raw домен
     domain = extract_domain_token(line)
+
     if domain and not is_excluded_domain(domain):
         return f"DOMAIN-SUFFIX,{domain}"
 
@@ -290,24 +415,47 @@ def fetch_text(url: str, timeout: int = 60, retries: int = 2) -> str:
     context = ssl.create_default_context()
 
     last_error: Optional[Exception] = None
+
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
+            with urllib.request.urlopen(
+                req,
+                timeout=timeout,
+                context=context
+            ) as response:
                 raw = response.read()
+
             content_type = ""
+
             try:
                 content_type = response.headers.get("Content-Type", "")
             except Exception:
                 pass
+
             encoding = "utf-8"
-            match = re.search(r"charset=([^\s;]+)", content_type, re.IGNORECASE)
+
+            match = re.search(
+                r"charset=([^\s;]+)",
+                content_type,
+                re.IGNORECASE
+            )
+
             if match:
                 encoding = match.group(1).strip('"').strip("'")
+
             return raw.decode(encoding, errors="replace")
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as e:
+
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            OSError
+        ) as e:
             last_error = e
+
             if attempt < retries:
                 continue
+
             raise last_error
 
 
@@ -320,6 +468,7 @@ def build_blocklist() -> list[str]:
 
     for rule in MANUAL_RULES:
         normalized = normalize_rule(rule)
+
         if normalized:
             combined_rules.add(normalized)
 
@@ -331,26 +480,45 @@ def build_blocklist() -> list[str]:
 
     for url in SOURCE_URLS:
         source_name = url.split("/")[-1]
+
         try:
             content = fetch_text(url)
             count_before = len(combined_rules)
 
             for raw_line in content.splitlines():
                 normalized = normalize_rule(raw_line)
+
                 if normalized:
                     combined_rules.add(normalized)
 
             added = len(combined_rules) - count_before
-            results.append((source_name, added, True))
-            print(f"✅ {source_name:<55} +{added}")
+
+            results.append(
+                (source_name, added, True)
+            )
+
+            print(
+                f"✅ {source_name:<55} +{added}"
+            )
 
         except Exception as e:
-            results.append((source_name, 0, False))
-            failed.append((source_name, str(e)))
-            print(f"❌ {source_name:<55} ОШИБКА: {e}")
+            results.append(
+                (source_name, 0, False)
+            )
+
+            failed.append(
+                (source_name, str(e))
+            )
+
+            print(
+                f"❌ {source_name:<55} ОШИБКА: {e}"
+            )
 
     if failed:
-        print(f"\n⚠️  Не удалось загрузить {len(failed)} источник(ов):")
+        print(
+            f"\n⚠️  Не удалось загрузить {len(failed)} источник(ов):"
+        )
+
         for name, err in failed:
             print(f"   • {name}: {err}")
 
@@ -365,7 +533,10 @@ def write_atomically(path: str, lines: list[str]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M UTC"
+    )
+
     header = [
         "# ══════════════════════════════════════════════════════════════",
         "# Auto-generated Shadowrocket / Surge Blocklist",
@@ -379,6 +550,7 @@ def write_atomically(path: str, lines: list[str]) -> None:
     ]
 
     temp_dir = str(target.parent)
+
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -389,10 +561,12 @@ def write_atomically(path: str, lines: list[str]) -> None:
         suffix=".tmp",
     ) as tmp:
         tmp_path = tmp.name
+
         for line in header:
             tmp.write(line + "\n")
-        for rule in lines:
-            tmp.write(rule + "\n")
+
+        for line in lines:
+            tmp.write(line + "\n")
 
     os.replace(tmp_path, target)
 
@@ -405,14 +579,24 @@ def main() -> None:
     rules = build_blocklist()
 
     if not rules:
-        print("\nНе удалось собрать ни одного правила. Файл не перезаписан.")
+        print(
+            "\nНе удалось собрать ни одного правила. "
+            "Файл не перезаписан."
+        )
         return
 
-    write_atomically(OUTPUT_FILENAME, rules)
+    write_atomically(
+        OUTPUT_FILENAME,
+        rules
+    )
 
-    print(f"\n{'─'*60}")
-    print(f"✅ Готово! Всего уникальных правил: {len(rules)}")
-    print(f"📄 Файл сохранён: {OUTPUT_FILENAME}")
+    print(f"\n{'─' * 60}")
+    print(
+        f"✅ Готово! Всего уникальных правил: {len(rules)}"
+    )
+    print(
+        f"📄 Файл сохранён: {OUTPUT_FILENAME}"
+    )
 
 
 if __name__ == "__main__":
