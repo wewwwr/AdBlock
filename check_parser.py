@@ -10,13 +10,13 @@ from pathlib import Path
 # НАСТРОЙКИ
 # ─────────────────────────────────────────────
 
-# Твой основной скрипт
+# Основной скрипт
 MAIN_SCRIPT = "update_list.py"
 
-# Отчёт будет автоматически создан в этой папке
+# Отчёт
 REPORT_FILENAME = "reports/parser_report.md"
 
-# Итоговый файл основной базы
+# Итоговый файл
 OUTPUT_FILENAME = "my_custom_blocklist.list"
 
 
@@ -191,8 +191,6 @@ def check_source(
         "duplicates": 0,
         "unique": 0,
 
-        # Сколько правил этой базы реально
-        # добавилось к общему результату.
         "new_to_total": 0,
 
         "error": "",
@@ -230,9 +228,6 @@ def check_source(
 
             if normalized is None:
 
-                # Сначала выясняем,
-                # не была ли строка исключена
-                # специально через EXCLUSIONS.
                 if is_excluded_line(line):
                     result["excluded"] += 1
                 else:
@@ -242,7 +237,7 @@ def check_source(
 
             result["parsed"] += 1
 
-            # Дубли внутри самой базы.
+            # Дубли внутри конкретной базы.
             if normalized in source_rules:
                 result["duplicates"] += 1
 
@@ -250,8 +245,8 @@ def check_source(
 
         result["unique"] = len(source_rules)
 
-        # Сколько правил этой базы ещё не было
-        # среди предыдущих источников.
+        # Сколько правил этой базы добавилось
+        # поверх всех предыдущих источников.
         before = len(cumulative_rules)
 
         cumulative_rules.update(
@@ -283,9 +278,10 @@ def read_final_blocklist() -> set[str]:
     if not path.exists():
         return set()
 
-    rules = set()
+    rules: set[str] = set()
 
     try:
+
         for raw_line in path.read_text(
             encoding="utf-8",
             errors="replace",
@@ -305,6 +301,35 @@ def read_final_blocklist() -> set[str]:
         return set()
 
     return rules
+
+
+# ─────────────────────────────────────────────
+# ТОЧНОЕ СРАВНЕНИЕ ИТОГОВОГО ФАЙЛА
+# ─────────────────────────────────────────────
+
+def compare_final_file(
+    cumulative_rules: set[str],
+    final_file_rules: set[str],
+) -> dict:
+
+    missing_rules = (
+        cumulative_rules - final_file_rules
+    )
+
+    extra_rules = (
+        final_file_rules - cumulative_rules
+    )
+
+    return {
+        "exact_match": (
+            not missing_rules
+            and not extra_rules
+        ),
+
+        "missing": missing_rules,
+
+        "extra": extra_rules,
+    }
 
 
 # ─────────────────────────────────────────────
@@ -372,11 +397,19 @@ def make_report(
         read_final_blocklist()
     )
 
+    comparison = compare_final_file(
+        cumulative_rules,
+        final_file_rules,
+    )
+
+    missing_rules = comparison["missing"]
+    extra_rules = comparison["extra"]
+
     # ─────────────────────────────────────
     # REPORT
     # ─────────────────────────────────────
 
-    lines = []
+    lines: list[str] = []
 
     lines.append(
         "# 🔍 Parser Report"
@@ -444,25 +477,77 @@ def make_report(
         f"- Уникальных правил после объединения источников: **{len(cumulative_rules):,}**"
     )
 
-    if final_file_rules:
+    lines.append(
+        f"- Правил фактически в `{OUTPUT_FILENAME}`: **{len(final_file_rules):,}**"
+    )
+
+    # ─────────────────────────────────────
+    # ТОЧНАЯ ПРОВЕРКА
+    # ─────────────────────────────────────
+
+    if comparison["exact_match"]:
 
         lines.append(
-            f"- Правил фактически в `{OUTPUT_FILENAME}`: **{len(final_file_rules):,}**"
+            "- Проверка итогового файла: **✅ точное совпадение**"
         )
 
-        difference = (
-            len(final_file_rules)
-            - len(cumulative_rules)
+        lines.append(
+            "- Отсутствующих правил: **0**"
         )
 
-        if difference == 0:
+        lines.append(
+            "- Лишних правил: **0**"
+        )
+
+    else:
+
+        lines.append(
+            "- Проверка итогового файла: **❌ НЕ совпадает**"
+        )
+
+        lines.append(
+            f"- Отсутствующих правил: **{len(missing_rules):,}**"
+        )
+
+        lines.append(
+            f"- Лишних правил: **{len(extra_rules):,}**"
+        )
+
+        if missing_rules:
+
+            lines.append("")
+
             lines.append(
-                "- Проверка итогового файла: **✅ совпадает**"
+                "### ❌ Примеры отсутствующих правил"
             )
-        else:
+
+            lines.append("")
+
+            for rule in sorted(
+                missing_rules
+            )[:20]:
+
+                lines.append(
+                    f"- `{rule}`"
+                )
+
+        if extra_rules:
+
+            lines.append("")
+
             lines.append(
-                f"- Проверка итогового файла: **⚠️ разница {difference:+,}**"
+                "### ⚠️ Примеры лишних правил"
             )
+
+            lines.append("")
+
+            for rule in sorted(
+                extra_rules
+            )[:20]:
+
+                lines.append(
+                    f"- `{rule}`"
+                )
 
     lines.append("")
 
@@ -488,6 +573,7 @@ def make_report(
 
         if r["downloaded"]:
             status = "✅ OK"
+
         else:
             status = (
                 f"❌ {r['error']}"
@@ -557,6 +643,10 @@ def make_report(
 
     lines.append("")
 
+    # ─────────────────────────────────────
+    # ПРОВЕРЯЕМАЯ ЛОГИКА
+    # ─────────────────────────────────────
+
     lines.append(
         "## 🛡️ Проверяемая логика"
     )
@@ -572,7 +662,11 @@ def make_report(
     )
 
     lines.append(
-        "- Дубли удаляются через `set`."
+        "- Дубли внутри каждой базы определяются отдельно."
+    )
+
+    lines.append(
+        "- Дубли между источниками удаляются через `set`."
     )
 
     lines.append(
@@ -580,10 +674,18 @@ def make_report(
     )
 
     lines.append(
-        "- Итоговый файл проверяется отдельно."
+        "- Итоговый файл сравнивается по точному содержимому, а не только по количеству правил."
+    )
+
+    lines.append(
+        "- При несовпадении показываются примеры отсутствующих и лишних правил."
     )
 
     lines.append("")
+
+    # ─────────────────────────────────────
+    # ФАЙЛЫ
+    # ─────────────────────────────────────
 
     lines.append(
         "## 📁 Файлы"
@@ -616,13 +718,12 @@ def main_check() -> None:
         "🔍 Запуск проверки всех источников...\n"
     )
 
-    results = []
+    results: list[dict] = []
 
-    # Сюда постепенно складываются правила
-    # всех источников.
+    # Все правила источников.
     cumulative_rules: set[str] = set()
 
-    # Сначала учитываем ручные правила.
+    # Ручные правила.
     manual_rules: set[str] = set()
 
     for rule in main.MANUAL_RULES:
