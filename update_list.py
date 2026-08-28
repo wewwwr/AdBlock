@@ -116,7 +116,7 @@ MANUAL_RULES = {
     "DOMAIN-SUFFIX,email.mailgun.net",
     "DOMAIN-SUFFIX,clicks.aweber.com",
     "DOMAIN-SUFFIX,pi.pardot.com",
-    "DOMAIN-SUFFIX,mandrillapp.com",
+    "DOMAIN-SUFFIX,mandrill.net",
     "DOMAIN-SUFFIX,sendgrid.net",
 
     # Майнинг
@@ -182,24 +182,25 @@ def is_excluded_domain(domain: str) -> bool:
     """
     Проверяет, должен ли домен быть исключён из blocklist.
 
-    Важно:
     Исключение работает в обе стороны.
 
     Например:
 
-        EXCLUSIONS:
+        EXCLUSION:
             updates.maxmind.com
 
-        Правило:
+        RULE:
             DOMAIN-SUFFIX,maxmind.com
 
     Такое правило тоже удаляется, потому что
     DOMAIN-SUFFIX,maxmind.com блокирует updates.maxmind.com.
 
-    При этом обычное поведение для поддоменов сохраняется:
-        EXCLUSION = example.com
-        RULE      = foo.example.com
-        => правило удаляется.
+    Также исключаются:
+        updates.maxmind.com
+        foo.updates.maxmind.com
+
+    При этом обычная блокировка остальных доменов
+    остаётся без изменений.
     """
 
     domain = normalize_domain(domain)
@@ -218,14 +219,6 @@ def is_excluded_domain(domain: str) -> bool:
             return True
 
         # 2. Домен является поддоменом исключения
-        #
-        # EXCLUSION:
-        #   example.com
-        #
-        # DOMAIN:
-        #   cdn.example.com
-        #
-        # => исключить
         if domain.endswith("." + exclusion):
             return True
 
@@ -249,11 +242,16 @@ def is_excluded_domain(domain: str) -> bool:
 
 def is_excluded_rule(prefix: str, value: str) -> bool:
     """
-    Проверяет исключения именно с учётом типа Shadowrocket/Surge rule.
+    Проверяет исключения с учётом типа Shadowrocket/Surge rule.
 
-    Меняет поведение только для доменных правил.
-    IP-CIDR, GEOIP, PROCESS-NAME, USER-AGENT, URL-REGEX
-    остаются без изменений.
+    DOMAIN / DOMAIN-SUFFIX:
+        проверяется сам домен и родительские правила.
+
+    DOMAIN-KEYWORD:
+        keyword проверяется как подстрока.
+
+    IP-CIDR, GEOIP, PROCESS-NAME, USER-AGENT,
+    URL-REGEX остаются без изменений.
     """
 
     prefix = prefix.strip().upper()
@@ -267,26 +265,44 @@ def is_excluded_rule(prefix: str, value: str) -> bool:
         return bool(domain and is_excluded_domain(domain))
 
     if prefix == "DOMAIN-KEYWORD":
-        domain = extract_domain_token(value)
+        # ВАЖНО:
+        # DOMAIN-KEYWORD не обязан содержать точку.
+        #
+        # Например:
+        #   adsense
+        #   admob
+        #   crashlytics
+        #   googleads
+        #   inmobi
+        #
+        # Поэтому require_dot=False.
+        keyword = extract_domain_token(
+            value,
+            require_dot=False
+        )
 
-        if not domain:
+        if not keyword:
             return False
 
-        domain = normalize_domain(domain)
+        keyword = normalize_domain(keyword)
 
-        # DOMAIN-KEYWORD,maxmind
-        # совпадёт с updates.maxmind.com.
+        # DOMAIN-KEYWORD работает как поиск подстроки.
         #
-        # Поэтому проверяем, встречается ли keyword
-        # внутри любого исключённого домена.
+        # Например:
+        #   DOMAIN-KEYWORD,maxmind
+        #
+        # совпадёт с:
+        #   updates.maxmind.com
+        #
+        # Поэтому такой keyword тоже нельзя оставлять,
+        # если он встречается в одном из исключений.
         for exclusion in EXCLUSIONS:
             exclusion = normalize_domain(exclusion)
 
-            if domain in exclusion:
+            if keyword in exclusion:
                 return True
 
-        # Также сохраняем обычную проверку.
-        return is_excluded_domain(domain)
+        return is_excluded_domain(keyword)
 
     return False
 
@@ -301,8 +317,28 @@ def extract_host_from_url(url: str) -> str:
     return normalize_domain(host)
 
 
-def extract_domain_token(text: str) -> str:
+def extract_domain_token(
+    text: str,
+    require_dot: bool = True
+) -> str:
+    """
+    Извлекает домен или keyword.
+
+    require_dot=True:
+        обычный домен должен содержать точку.
+
+    require_dot=False:
+        используется для DOMAIN-KEYWORD,
+        где значение может быть:
+            adsense
+            admob
+            inmobi
+            crashlytics
+            и т.д.
+    """
+
     text = strip_inline_noise(text)
+
     if not text:
         return ""
 
@@ -333,7 +369,9 @@ def extract_domain_token(text: str) -> str:
     if is_ip_address(text):
         return ""
 
-    if "." not in text:
+    # Для обычных доменов точка обязательна.
+    # Для DOMAIN-KEYWORD require_dot=False.
+    if require_dot and "." not in text:
         return ""
 
     return text
@@ -348,7 +386,8 @@ def normalize_rule(line: str) -> Optional[str]:
     if line.startswith(("#", "//", "!", ";")):
         return None
 
-    # HOSTS-формат: 0.0.0.0 example.com
+    # HOSTS-формат:
+    # 0.0.0.0 example.com
     parts = line.split()
 
     if len(parts) >= 2 and is_ip_address(parts[0]):
@@ -365,15 +404,20 @@ def normalize_rule(line: str) -> Optional[str]:
         prefix = prefix.strip().upper()
         value = value.strip()
 
-        if prefix in {"DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"}:
-            # ИЗМЕНЕНО:
-            # Теперь проверяется не только само значение правила,
-            # но и случай, когда более широкое DOMAIN-SUFFIX
-            # накрывает исключённый домен.
+        if prefix in {
+            "DOMAIN",
+            "DOMAIN-SUFFIX",
+            "DOMAIN-KEYWORD"
+        }:
+            # Сначала проверяем исключения.
             if is_excluded_rule(prefix, value):
                 return None
 
-            domain = extract_domain_token(value)
+            # DOMAIN-KEYWORD может не содержать точки.
+            domain = extract_domain_token(
+                value,
+                require_dot=(prefix != "DOMAIN-KEYWORD")
+            )
 
             if not domain:
                 return None
@@ -412,7 +456,12 @@ def normalize_rule(line: str) -> Optional[str]:
 
 def fetch_text(url: str, timeout: int = 60, retries: int = 2) -> str:
     headers = {"User-Agent": USER_AGENT}
-    req = urllib.request.Request(url, headers=headers)
+
+    req = urllib.request.Request(
+        url,
+        headers=headers
+    )
+
     context = ssl.create_default_context()
 
     last_error: Optional[Exception] = None
@@ -429,7 +478,10 @@ def fetch_text(url: str, timeout: int = 60, retries: int = 2) -> str:
             content_type = ""
 
             try:
-                content_type = response.headers.get("Content-Type", "")
+                content_type = response.headers.get(
+                    "Content-Type",
+                    ""
+                )
             except Exception:
                 pass
 
@@ -442,9 +494,14 @@ def fetch_text(url: str, timeout: int = 60, retries: int = 2) -> str:
             )
 
             if match:
-                encoding = match.group(1).strip('"').strip("'")
+                encoding = match.group(1).strip(
+                    '"'
+                ).strip("'")
 
-            return raw.decode(encoding, errors="replace")
+            return raw.decode(
+                encoding,
+                errors="replace"
+            )
 
         except (
             urllib.error.HTTPError,
@@ -473,8 +530,13 @@ def build_blocklist() -> list[str]:
         if normalized:
             combined_rules.add(normalized)
 
-    print(f"Ручных правил добавлено: {len(combined_rules)}")
-    print("Начинаю загрузку и обработку списков...\n")
+    print(
+        f"Ручных правил добавлено: {len(combined_rules)}"
+    )
+
+    print(
+        "Начинаю загрузку и обработку списков...\n"
+    )
 
     results = []
     failed = []
@@ -484,6 +546,7 @@ def build_blocklist() -> list[str]:
 
         try:
             content = fetch_text(url)
+
             count_before = len(combined_rules)
 
             for raw_line in content.splitlines():
@@ -517,11 +580,14 @@ def build_blocklist() -> list[str]:
 
     if failed:
         print(
-            f"\n⚠️  Не удалось загрузить {len(failed)} источник(ов):"
+            f"\n⚠️  Не удалось загрузить "
+            f"{len(failed)} источник(ов):"
         )
 
         for name, err in failed:
-            print(f"   • {name}: {err}")
+            print(
+                f"   • {name}: {err}"
+            )
 
     return sorted(combined_rules)
 
@@ -530,11 +596,21 @@ def build_blocklist() -> list[str]:
 #  ЗАПИСЬ
 # ─────────────────────────────────────────────
 
-def write_atomically(path: str, lines: list[str]) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
+def write_atomically(
+    path: str,
+    lines: list[str]
+) -> None:
 
-    now = datetime.now(timezone.utc).strftime(
+    target = Path(path)
+
+    target.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    now = datetime.now(
+        timezone.utc
+    ).strftime(
         "%Y-%m-%d %H:%M UTC"
     )
 
@@ -545,7 +621,10 @@ def write_atomically(path: str, lines: list[str]) -> None:
         f"# Total rules: {len(lines)}",
         "#",
         "# Sources:",
-        *[f"#   {url}" for url in SOURCE_URLS],
+        *[
+            f"#   {url}"
+            for url in SOURCE_URLS
+        ],
         "# ══════════════════════════════════════════════════════════════",
         "",
     ]
@@ -561,15 +640,23 @@ def write_atomically(path: str, lines: list[str]) -> None:
         prefix=target.name + ".",
         suffix=".tmp",
     ) as tmp:
+
         tmp_path = tmp.name
 
         for line in header:
-            tmp.write(line + "\n")
+            tmp.write(
+                line + "\n"
+            )
 
         for line in lines:
-            tmp.write(line + "\n")
+            tmp.write(
+                line + "\n"
+            )
 
-    os.replace(tmp_path, target)
+    os.replace(
+        tmp_path,
+        target
+    )
 
 
 # ─────────────────────────────────────────────
@@ -591,12 +678,18 @@ def main() -> None:
         rules
     )
 
-    print(f"\n{'─' * 60}")
     print(
-        f"✅ Готово! Всего уникальных правил: {len(rules)}"
+        f"\n{'─' * 60}"
     )
+
     print(
-        f"📄 Файл сохранён: {OUTPUT_FILENAME}"
+        f"✅ Готово! Всего уникальных правил: "
+        f"{len(rules)}"
+    )
+
+    print(
+        f"📄 Файл сохранён: "
+        f"{OUTPUT_FILENAME}"
     )
 
 
