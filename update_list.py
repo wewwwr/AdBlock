@@ -51,7 +51,7 @@ SOURCE_URLS = [
     # ── HaGeZi Ultimate ───────────────────────────────────────────────────────
     # Самый полный мировой список: реклама, трекеры, malware, phishing
     # Источники: EasyList, EasyPrivacy, AdGuard, Peter Lowe, OISD и др.
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt",
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists-legacy/main/domains/ultimate.txt",
 
     # ── StevenBlack hosts ─────────────────────────────────────────────────────
     # Классический объединённый hosts-файл: AdAway + hpHosts + Peter Lowe + MVP
