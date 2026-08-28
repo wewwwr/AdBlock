@@ -1,6 +1,6 @@
 # 🔍 Parser Report
 
-Последняя проверка: **2026-08-28 15:25 UTC**
+Последняя проверка: **2026-08-28 15:36 UTC**
 
 ## 📊 Общий итог
 
@@ -22,6 +22,7 @@
 - Всего нераспарсено: **230**
 - Доля от всех строк: **0.0100%**
 - Полный список: `reports/unparsed_lines.txt`
+- Абсолютный путь: `/home/runner/work/AdBlock/AdBlock/reports/unparsed_lines.txt`
 
 | Источник | Нераспарсено | Статус |
 |---|---:|---|
@@ -94,10 +95,11 @@
 - Итоговый файл сравнивается по точному содержимому, а не только по количеству правил.
 - При несовпадении показываются примеры отсутствующих и лишних правил.
 - Все нераспарсенные строки сохраняются отдельно.
+- Пути привязаны к папке этого скрипта, поэтому запуск из другой директории не ломает сохранение файлов.
 
 ## 📁 Файлы
 
-- Основная база: `my_custom_blocklist.list`
-- Основной скрипт: `update_list.py`
-- Этот отчёт: `reports/parser_report.md`
-- Нераспарсенные строки: `reports/unparsed_lines.txt`
+- Основная база: `/home/runner/work/AdBlock/AdBlock/my_custom_blocklist.list`
+- Основной скрипт: `/home/runner/work/AdBlock/AdBlock/update_list.py`
+- Этот отчёт: `/home/runner/work/AdBlock/AdBlock/reports/parser_report.md`
+- Нераспарсенные строки: `/home/runner/work/AdBlock/AdBlock/reports/unparsed_lines.txt`
