@@ -132,6 +132,7 @@ MANUAL_RULES = {
 EXCLUSIONS = {
     "keysforgamers.com",
     "updates.maxmind.com",
+    "browserleaks.com",
 }
 
 
