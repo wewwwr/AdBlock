@@ -10,13 +10,12 @@ from pathlib import Path
 # НАСТРОЙКИ
 # ─────────────────────────────────────────────
 
-# Основной скрипт
 MAIN_SCRIPT = "update_list.py"
 
-# Отчёт
 REPORT_FILENAME = "reports/parser_report.md"
 
-# Итоговый файл
+UNPARSED_FILENAME = "reports/unparsed_lines.txt"
+
 OUTPUT_FILENAME = "my_custom_blocklist.list"
 
 
@@ -193,6 +192,8 @@ def check_source(
 
         "new_to_total": 0,
 
+        "unparsed_lines": [],
+
         "error": "",
     }
 
@@ -204,7 +205,10 @@ def check_source(
 
         source_rules: set[str] = set()
 
-        for raw_line in content.splitlines():
+        for line_number, raw_line in enumerate(
+            content.splitlines(),
+            1,
+        ):
 
             result["total_lines"] += 1
 
@@ -212,10 +216,12 @@ def check_source(
                 raw_line
             )
 
+            # Пустая строка
             if not line:
                 result["empty_lines"] += 1
                 continue
 
+            # Комментарий
             if line.startswith(
                 ("#", "//", "!", ";")
             ):
@@ -228,10 +234,22 @@ def check_source(
 
             if normalized is None:
 
+                # Исключение
                 if is_excluded_line(line):
+
                     result["excluded"] += 1
+
                 else:
+
                     result["failed"] += 1
+
+                    # Сохраняем ВСЕ нераспарсенные строки.
+                    result["unparsed_lines"].append(
+                        {
+                            "line_number": line_number,
+                            "line": line,
+                        }
+                    )
 
                 continue
 
@@ -269,11 +287,104 @@ def check_source(
 
 
 # ─────────────────────────────────────────────
+# СОХРАНЕНИЕ НЕРАСПАРСЕННЫХ СТРОК
+# ─────────────────────────────────────────────
+
+def write_unparsed_file(
+    results: list[dict],
+) -> int:
+
+    path = Path(
+        UNPARSED_FILENAME
+    )
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    now = datetime.now(
+        timezone.utc
+    ).strftime(
+        "%Y-%m-%d %H:%M UTC"
+    )
+
+    total = sum(
+        len(r["unparsed_lines"])
+        for r in results
+    )
+
+    lines: list[str] = []
+
+    lines.append(
+        "# Unparsed Shadowrocket / Surge source lines"
+    )
+
+    lines.append(
+        f"# Generated: {now}"
+    )
+
+    lines.append(
+        f"# Total unparsed lines: {total}"
+    )
+
+    lines.append("")
+
+    for result in results:
+
+        unparsed = result["unparsed_lines"]
+
+        if not unparsed:
+            continue
+
+        lines.append(
+            "══════════════════════════════════════════════════════════════"
+        )
+
+        lines.append(
+            f"SOURCE: {result['name']}"
+        )
+
+        lines.append(
+            f"URL: {result['url']}"
+        )
+
+        lines.append(
+            f"UNPARSED: {len(unparsed)}"
+        )
+
+        lines.append(
+            "══════════════════════════════════════════════════════════════"
+        )
+
+        lines.append("")
+
+        for item in unparsed:
+
+            lines.append(
+                f"[line {item['line_number']}] "
+                f"{item['line']}"
+            )
+
+        lines.append("")
+
+    path.write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
+
+    return total
+
+
+# ─────────────────────────────────────────────
 # ЧТЕНИЕ ИТОГОВОГО ФАЙЛА
 # ─────────────────────────────────────────────
 
 def read_final_blocklist() -> set[str]:
-    path = Path(OUTPUT_FILENAME)
+
+    path = Path(
+        OUTPUT_FILENAME
+    )
 
     if not path.exists():
         return set()
@@ -298,13 +409,14 @@ def read_final_blocklist() -> set[str]:
             rules.add(line)
 
     except Exception:
+
         return set()
 
     return rules
 
 
 # ─────────────────────────────────────────────
-# ТОЧНОЕ СРАВНЕНИЕ ИТОГОВОГО ФАЙЛА
+# ТОЧНОЕ СРАВНЕНИЕ
 # ─────────────────────────────────────────────
 
 def compare_final_file(
@@ -393,6 +505,11 @@ def make_report(
         for r in results
     )
 
+    total_unparsed = sum(
+        len(r["unparsed_lines"])
+        for r in results
+    )
+
     final_file_rules = (
         read_final_blocklist()
     )
@@ -403,6 +520,7 @@ def make_report(
     )
 
     missing_rules = comparison["missing"]
+
     extra_rules = comparison["extra"]
 
     # ─────────────────────────────────────
@@ -480,6 +598,79 @@ def make_report(
     lines.append(
         f"- Правил фактически в `{OUTPUT_FILENAME}`: **{len(final_file_rules):,}**"
     )
+
+    lines.append("")
+
+    # ─────────────────────────────────────
+    # НЕРАСПАРСЕННЫЕ
+    # ─────────────────────────────────────
+
+    lines.append(
+        "## ❌ Нераспарсенные строки"
+    )
+
+    lines.append("")
+
+    lines.append(
+        f"- Всего нераспарсено: **{total_unparsed:,}**"
+    )
+
+    if total_lines:
+        percentage = (
+            total_unparsed
+            / total_lines
+            * 100
+        )
+
+        lines.append(
+            f"- Доля от всех строк: **{percentage:.4f}%**"
+        )
+
+    lines.append(
+        f"- Полный список: `{UNPARSED_FILENAME}`"
+    )
+
+    lines.append("")
+
+    lines.append(
+        "| Источник | Нераспарсено | Статус |"
+    )
+
+    lines.append(
+        "|---|---:|---|"
+    )
+
+    for r in results:
+
+        count = len(
+            r["unparsed_lines"]
+        )
+
+        if count == 0:
+
+            status = "✅ 0"
+
+        else:
+
+            status = "⚠️ проверить"
+
+        lines.append(
+            f"| {r['name']} "
+            f"| {count:,} "
+            f"| {status} |"
+        )
+
+    lines.append("")
+
+    lines.append(
+        "> 💡 В `unparsed_lines.txt` сохранены сами строки и номера строк в исходной базе."
+    )
+
+    lines.append(
+        "> Пустые строки и комментарии туда не попадают."
+    )
+
+    lines.append("")
 
     # ─────────────────────────────────────
     # ТОЧНАЯ ПРОВЕРКА
@@ -572,9 +763,11 @@ def make_report(
     for r in results:
 
         if r["downloaded"]:
+
             status = "✅ OK"
 
         else:
+
             status = (
                 f"❌ {r['error']}"
             )
@@ -631,6 +824,10 @@ def make_report(
         "- **Новых в итог** — сколько уникальных правил эта база добавила сверх всех предыдущих баз."
     )
 
+    lines.append(
+        "- **Нераспарсенные строки** — конкретные строки, которые `update_list.py` не смог преобразовать в правило."
+    )
+
     lines.append("")
 
     lines.append(
@@ -681,6 +878,10 @@ def make_report(
         "- При несовпадении показываются примеры отсутствующих и лишних правил."
     )
 
+    lines.append(
+        "- Все нераспарсенные строки сохраняются отдельно."
+    )
+
     lines.append("")
 
     # ─────────────────────────────────────
@@ -705,6 +906,10 @@ def make_report(
         f"- Этот отчёт: `{REPORT_FILENAME}`"
     )
 
+    lines.append(
+        f"- Нераспарсенные строки: `{UNPARSED_FILENAME}`"
+    )
+
     return "\n".join(lines) + "\n"
 
 
@@ -720,11 +925,13 @@ def main_check() -> None:
 
     results: list[dict] = []
 
-    # Все правила источников.
     cumulative_rules: set[str] = set()
 
-    # Ручные правила.
     manual_rules: set[str] = set()
+
+    # ─────────────────────────────────────
+    # РУЧНЫЕ ПРАВИЛА
+    # ─────────────────────────────────────
 
     for rule in main.MANUAL_RULES:
 
@@ -733,14 +940,17 @@ def main_check() -> None:
         )
 
         if normalized:
-            manual_rules.add(normalized)
+            manual_rules.add(
+                normalized
+            )
 
     cumulative_rules.update(
         manual_rules
     )
 
     print(
-        f"Ручных правил: {len(manual_rules):,}"
+        f"Ручных правил: "
+        f"{len(manual_rules):,}"
     )
 
     print("")
@@ -764,7 +974,9 @@ def main_check() -> None:
             cumulative_rules,
         )
 
-        results.append(result)
+        results.append(
+            result
+        )
 
         if result["downloaded"]:
 
@@ -788,7 +1000,17 @@ def main_check() -> None:
             )
 
     # ─────────────────────────────────────
-    # СОЗДАНИЕ ОТЧЁТА
+    # СОХРАНЯЕМ НЕРАСПАРСЕННЫЕ
+    # ─────────────────────────────────────
+
+    unparsed_total = (
+        write_unparsed_file(
+            results
+        )
+    )
+
+    # ─────────────────────────────────────
+    # СОЗДАЁМ REPORT
     # ─────────────────────────────────────
 
     report = make_report(
@@ -818,7 +1040,18 @@ def main_check() -> None:
     )
 
     print(
-        f"✅ Отчёт создан: {REPORT_FILENAME}"
+        f"✅ Отчёт создан: "
+        f"{REPORT_FILENAME}"
+    )
+
+    print(
+        f"⚠️ Нераспарсенных строк: "
+        f"{unparsed_total:,}"
+    )
+
+    print(
+        f"📄 Полный список: "
+        f"{UNPARSED_FILENAME}"
     )
 
     print(
