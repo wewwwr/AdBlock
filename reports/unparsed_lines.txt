@@ -1,5 +1,5 @@
 # Unparsed Shadowrocket / Surge source lines
-# Generated: 2026-09-03 06:53 UTC
+# Generated: 2026-09-03 19:23 UTC
 # Total unparsed lines: 230
 # Sources with unparsed lines: 4
 
@@ -223,7 +223,7 @@ URL: https://raw.githubusercontent.com/badmojr/1Hosts/master/Lite/domains.txt
 UNPARSED: 1
 ══════════════════════════════════════════════════════════════
 
-[line 157237] smaato_sdk_remote_config\.json.sdk-files.smaato.net
+[line 156986] smaato_sdk_remote_config\.json.sdk-files.smaato.net
 
 ══════════════════════════════════════════════════════════════
 SOURCE: StevenBlack Hosts
