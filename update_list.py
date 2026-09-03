@@ -133,6 +133,7 @@ EXCLUSIONS = {
     "keysforgamers.com",
     "updates.maxmind.com",
     "browserleaks.com",
+    "addr.tools",
 }
 
 
