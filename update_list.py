@@ -134,6 +134,7 @@ EXCLUSIONS = {
     "updates.maxmind.com",
     "browserleaks.com",
     "addr.tools",
+    "dnscheck.tools",
 }
 
 
