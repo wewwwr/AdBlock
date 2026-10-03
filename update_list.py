@@ -135,6 +135,7 @@ EXCLUSIONS = {
     "browserleaks.com",
     "addr.tools",
     "dnscheck.tools",
+    "graph.whatsapp.com",
 }
 
 
