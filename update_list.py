@@ -136,6 +136,7 @@ EXCLUSIONS = {
     "addr.tools",
     "dnscheck.tools",
     "graph.whatsapp.com",
+    "antibot.wildberries.ru",
 }
 
 
