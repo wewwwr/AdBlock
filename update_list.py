@@ -137,6 +137,7 @@ EXCLUSIONS = {
     "dnscheck.tools",
     "graph.whatsapp.com",
     "antibot.wildberries.ru",
+    "strm.yandex.ru",
 }
 
 
