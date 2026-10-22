@@ -133,6 +133,8 @@ EXCLUSIONS = {
     "keysforgamers.com",
     "updates.maxmind.com",
     "browserleaks.com",
+    "browserleaks.org",
+    "browserleaks.net",
     "addr.tools",
     "dnscheck.tools",
     "graph.whatsapp.com",
