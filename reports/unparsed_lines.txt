@@ -1,5 +1,5 @@
 # Unparsed Shadowrocket / Surge source lines
-# Generated: 2026-11-15 08:51 UTC
+# Generated: 2026-11-16 09:02 UTC
 # Total unparsed lines: 230
 # Sources with unparsed lines: 4
 
